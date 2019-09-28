@@ -108,8 +108,7 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
         bad_password = 1;
         debug_log(pamh, debug, LOG_INFO, "Bad password: inssufficient entropy: %lf < %lf", entropy,
                   options.min_entropy);
-        pam_error(pamh, "BAD PASSWORD: inssufficient entropy: %lf < %lf. Try adding some words", entropy,
-                  options.min_entropy);
+        pam_error(pamh, "BAD PASSWORD. Try adding some words");
       }
     } else {
       int score = zxcvbn_score(entropy);
@@ -117,7 +116,7 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
       if (score < options.min_score) {
         bad_password = 1;
         debug_log(pamh, debug, LOG_INFO, "Bad password: score %d < %d", score, options.min_score);
-        pam_error(pamh, "BAD PASSWORD: score %d < %d. Try adding some words", score, options.min_score);
+        pam_error(pamh, "BAD PASSWORD. Try adding some words");
       }
     }
 
