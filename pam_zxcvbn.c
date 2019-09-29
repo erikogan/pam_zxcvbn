@@ -207,17 +207,17 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
     } else if (!strncmp(*argv, "enforce_for_root", 16)) {
       opt->enforce_for_root = 1;
     } else if (!strncmp(*argv, "local_users_only", 16)) {
-      // TODO
+      /* TODO: Support local_users_only */
       /* opt->local_users_only = 1; */
       debug_log(pamh, debug, LOG_WARN, "WARNING: local_users_only is not currently implemented.")
     } else if (!strncmp(*argv, "authtok_type", 12)) {
-      /* TODO: Support this in prompts */;
+      /* NOOP: for pam_get_authtok */;
     } else if (!strncmp(*argv, "use_authtok", 11)) {
-      /* for pam_get_authtok, ignore */;
+      /* NOOP: for pam_get_authtok */;
     } else if (!strncmp(*argv, "use_first_pass", 14)) {
-      /* for pam_get_authtok, ignore */;
+      /* NOOP: for pam_get_authtok */;
     } else if (!strncmp(*argv, "try_first_pass", 14)) {
-      /* for pam_get_authtok, ignore */;
+      /* NOOP: for pam_get_authtok */;
     } else {
       pam_syslog(pamh, LOG_ERR,
         "pam_zxcvbn: unknown or broken option; %s", *argv);
