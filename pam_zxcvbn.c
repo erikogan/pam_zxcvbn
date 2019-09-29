@@ -210,6 +210,7 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
     } else if (!strncmp(*argv, "local_users_only", 16)) {
       // TODO
       /* opt->local_users_only = 1; */
+      debug_log(pamh, debug, LOG_WARN, "WARNING: local_users_only is not currently implemented.")
     } else if (!strncmp(*argv, "authtok_type", 12)) {
       /* TODO: Support this in prompts */;
     } else if (!strncmp(*argv, "use_authtok", 11)) {
