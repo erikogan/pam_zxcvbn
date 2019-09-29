@@ -1,6 +1,9 @@
+#include <stdio.h>
+#include <errno.h>
 #include <string.h>
 #include <math.h>
 #include <unistd.h>
+#include <pwd.h>
 #include <syslog.h>
 #include <zxcvbn/zxcvbn.h>
 
@@ -22,17 +25,20 @@
 
 #define LOG_WARN    LOG_WARNING
 
+#define PATH_PASSWD "/etc/passwd"
+
 struct module_options {
   int tries;
   int enforce_for_root;
   int min_score;
   double min_entropy;
-  /* maybe later */
-  // int local_users_only;
+  int local_users_only;
+  const char *local_users_file;
 };
 
 static void debug_log(pam_handle_t *pamh, int flag, int level, char *fmt, ...);
 static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv);
+static int check_local_user(pam_handle_t *pamh, struct module_options *opt, const char *user);
 static int zxcvbn_score(double entropy);
 
 PAM_EXTERN int
@@ -63,6 +69,7 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
   options.tries = MIN_TRIES;
   options.min_score = MIN_SCORE;
   options.min_entropy = MIN_ENTROPY;
+  options.local_users_file = PATH_PASSWD;
 
   debug = parse_arguments(pamh, &options, argc, argv);
 
@@ -95,11 +102,16 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
       return PAM_AUTHTOK_ERR;
     }
 
-    // TODO: Add a user dictionary
-    // TODO: Use matches
-    // entropy = ZxcvbnMatch(new_token, NULL, &matches);
-    entropy = ZxcvbnMatch(new_token, NULL, NULL);
-    debug_log(pamh, debug, LOG_INFO, "ZxcvbnMatch returned: %lf", entropy);
+    if (options.local_users_only && check_local_user(pamh, &options, user) == 0) {
+      /* skip the check if a non-local user */
+      retval = 0;
+    } else {
+      // TODO: Add a user dictionary
+      // TODO: Use matches
+      // entropy = ZxcvbnMatch(new_token, NULL, &matches);
+      entropy = ZxcvbnMatch(new_token, NULL, NULL);
+      debug_log(pamh, debug, LOG_INFO, "ZxcvbnMatch returned: %lf", entropy);
+    }
 
     int bad_password = 0;
 
@@ -167,6 +179,47 @@ static int zxcvbn_score(double entropy) {
   return 4;
 }
 
+static int check_local_user(pam_handle_t *pamh, struct module_options *opt, const char *user) {
+  struct passwd pw, *pwp;
+  char buf[4096];
+  int found = 0;
+  FILE *fp;
+  int errn;
+
+  fp = fopen(opt->local_users_file, "r");
+  if (fp == NULL) {
+    pam_syslog(pamh, LOG_ERR, "unable to open local password file %s: %s", opt->local_users_file,
+               pam_strerror(pamh, errno));
+    return -1;
+  }
+
+  for (;;) {
+    errn = fgetpwent_r(fp, &pw, buf, sizeof (buf), &pwp);
+    if (errn == ERANGE) {
+      pam_syslog(pamh, LOG_WARNING, "%s contains very long lines; corrupted?", PATH_PASSWD);
+      /* we can continue here as next call will read further */
+      continue;
+    }
+
+    if (errn != 0)
+      break;
+
+    if (strcmp(pwp->pw_name, user) == 0) {
+      found = 1;
+      break;
+    }
+  }
+
+  fclose (fp);
+
+  if (errn != 0 && errn != ENOENT) {
+    pam_syslog(pamh, LOG_ERR, "unable to enumerate local accounts: %s", pam_strerror(pamh, errn));
+    return -1;
+  } else {
+    return found;
+  }
+}
+
 static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv) {
   int debug = 0;
 
@@ -178,27 +231,27 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
     if (!strcmp(*argv, "debug")){
       debug |= DEBUG_FLAG;
     } else if (!strncmp(*argv, "type=", 5)) {
-      pam_set_item (pamh, PAM_AUTHTOK_TYPE, *argv+5);
+      pam_set_item (pamh, PAM_AUTHTOK_TYPE, *argv + 5);
     } else if (!strncmp(*argv, "retry=", 6)) {
-      opt->tries = strtol(*argv+6, &end, 10);
+      opt->tries = strtol(*argv + 6, &end, 10);
       if (!end || (opt->tries < MIN_TRIES)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid retry value: %s", *argv+6);
+        debug_log(pamh, debug, LOG_WARN, "Invalid retry value: %s", *argv + 6);
         opt->tries = MIN_TRIES;
       }
       end = NULL;
     } else if (!strncmp(*argv, "min_entropy=", 12)) {
-      opt->min_entropy = strtod(*argv+12, &end);
+      opt->min_entropy = strtod(*argv + 12, &end);
       if(!end || (opt->min_entropy < 0.0L)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid min_entropy value: %s", *argv+12);
+        debug_log(pamh, debug, LOG_WARN, "Invalid min_entropy value: %s", *argv + 12);
         opt->min_entropy = MIN_ENTROPY;
       } else {
         entropy_and_score |= 1;
       }
       end = NULL;
     } else if (!strncmp(*argv, "min_score=", 10)) {
-      opt->min_score = strtod(*argv+10, &end);
+      opt->min_score = strtod(*argv + 10, &end);
       if(!end || (opt->min_score <= 0)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid min_score value: %s", *argv+10);
+        debug_log(pamh, debug, LOG_WARN, "Invalid min_score value: %s", *argv + 10);
         opt->min_score = MIN_ENTROPY;
       } else {
         entropy_and_score |= 2;
@@ -207,9 +260,9 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
     } else if (!strncmp(*argv, "enforce_for_root", 16)) {
       opt->enforce_for_root = 1;
     } else if (!strncmp(*argv, "local_users_only", 16)) {
-      /* TODO: Support local_users_only */
-      /* opt->local_users_only = 1; */
-      debug_log(pamh, debug, LOG_WARN, "WARNING: local_users_only is not currently implemented.")
+      opt->local_users_only = 1;
+    } else if (!strncmp(*argv, "local_users_file=", 17)) {
+      opt->local_users_file = *argv + 17;
     } else if (!strncmp(*argv, "authtok_type", 12)) {
       /* NOOP: for pam_get_authtok */;
     } else if (!strncmp(*argv, "use_authtok", 11)) {

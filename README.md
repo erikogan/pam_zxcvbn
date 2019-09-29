@@ -73,7 +73,16 @@ password	required	pam_zxcvbn.so try_first_pass retry=3 authtok_type=
     treated as warnings. This option turns them back into errors.
   </dd>
   <dt><code><strong>local_users_only</strong></code></dt>
-  <dd><strong>NOTE:</strong> <em>This option is accepted for compatibility, but not currently implemented.</em></dd>
+  <dd>
+    Users must be in the local password file to have their passwords tested. Users will still be prompted for their
+    password, so that modules later in the stack can use it with <code>use_authtok</code> option. This option is
+    disabled by default.
+  </dd>
+  <dt><code><strong>local_users_file=</strong>&lt;FILE&gt;</code></dt>
+  <dd>
+    The passwd-style file used to search for local users if <code>local_users_only</code> is enabled. Defaults to
+    <code>/etc/passwd</code>.
+  </dd>
   <dt><code><strong>authtok_type=</strong>&lt;TYPE&gt;</code></dt>
   <dd>
     The default action is for the module to use the following prompts when requesting passwords: <code>New UNIX
