@@ -9,7 +9,7 @@
 
 // TODO: translate
 /* #include <libintl.h>
-#define _(str) gettext (str) */
+#define _(str) gettext(str) */
 
 // Define which PAM functions we support (and let the header define prototypes)
 #define PAM_SM_PASSWORD
@@ -28,25 +28,25 @@
 #define PATH_PASSWD "/etc/passwd"
 
 struct module_options {
+  int debug;
   int tries;
-  int enforce_for_root;
   int min_score;
   double min_entropy;
+  int enforce_for_root;
   int local_users_only;
   const char *local_users_file;
 };
 
-static void debug_log(pam_handle_t *pamh, int flag, int level, char *fmt, ...);
-static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv);
+static void debug_log(pam_handle_t *pamh, struct module_options *opt, int level, char *fmt, ...);
+static void parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv);
 static int check_local_user(pam_handle_t *pamh, struct module_options *opt, const char *user);
 static int zxcvbn_score(double entropy);
 
-PAM_EXTERN int
-pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
+PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
   /* As long as we’re linked, everything should be fine */
   int init_status = ZxcvbnInit();
   struct module_options options;
-  int retval, debug;
+  int retval;
   const char *user;
   int tries;
 
@@ -61,8 +61,8 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
   memset(&options, 0, sizeof(options));
 
   if (!(flags & PAM_UPDATE_AUTHTOK)) {
-    debug = parse_arguments(pamh, &options, argc, argv);
-    debug_log(pamh, debug, LOG_NOTICE, "UNKNOWN flags setting %02X", flags);
+    parse_arguments(pamh, &options, argc, argv);
+    debug_log(pamh, &options, LOG_NOTICE, "UNKNOWN flags setting %02X", flags);
     return PAM_SERVICE_ERR;
   }
 
@@ -71,19 +71,19 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
   options.min_entropy = MIN_ENTROPY;
   options.local_users_file = PATH_PASSWD;
 
-  debug = parse_arguments(pamh, &options, argc, argv);
+  parse_arguments(pamh, &options, argc, argv);
 
   retval = pam_get_user(pamh, &user, NULL);
 
   if (retval != PAM_SUCCESS || user == NULL) {
-    debug_log(pamh, debug, LOG_ERR, "Cannot get username");
+    debug_log(pamh, &options, LOG_ERR, "Cannot get username");
     return PAM_AUTHTOK_ERR;
   }
 
   // TODO: Maybe add this to the user dict later?
   // retval = pam_get_item(pamh, PAM_OLDAUTHTOK, &oldtoken);
   // if (retval != PAM_SUCCESS) {
-  //   debug_log(pamh, debug, LOG_ERR, "Can not get old passwd")
+  //   debug_log(pamh, &options, LOG_ERR, "Can not get old passwd")
   //   oldtoken = NULL;
   // }
 
@@ -110,7 +110,7 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
       // TODO: Use matches
       // entropy = ZxcvbnMatch(new_token, NULL, &matches);
       entropy = ZxcvbnMatch(new_token, NULL, NULL);
-      debug_log(pamh, debug, LOG_INFO, "ZxcvbnMatch returned: %lf", entropy);
+      debug_log(pamh, &options, LOG_INFO, "ZxcvbnMatch returned: %lf", entropy);
     }
 
     int bad_password = 0;
@@ -118,16 +118,16 @@ pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv) {
     if (options.min_entropy > 0) {
       if (entropy < options.min_entropy) {
         bad_password = 1;
-        debug_log(pamh, debug, LOG_INFO, "Bad password: inssufficient entropy: %lf < %lf", entropy,
+        debug_log(pamh, &options, LOG_INFO, "Bad password: inssufficient entropy: %lf < %lf", entropy,
                   options.min_entropy);
         pam_error(pamh, "BAD PASSWORD. Try adding some words");
       }
     } else {
       int score = zxcvbn_score(entropy);
-      debug_log(pamh, debug, LOG_DEBUG, "Password Score: %d", score);
+      debug_log(pamh, &options, LOG_DEBUG, "Password Score: %d", score);
       if (score < options.min_score) {
         bad_password = 1;
-        debug_log(pamh, debug, LOG_INFO, "Bad password: score %d < %d", score, options.min_score);
+        debug_log(pamh, &options, LOG_INFO, "Bad password: score %d < %d", score, options.min_score);
         pam_error(pamh, "BAD PASSWORD. Try adding some words");
       }
     }
@@ -220,29 +220,33 @@ static int check_local_user(pam_handle_t *pamh, struct module_options *opt, cons
   }
 }
 
-static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv) {
-  int debug = 0;
+static void parse_tries(pam_handle_t *pamh, struct module_options *opt, const char *arg) {
+  char *end = NULL;
 
+  opt->tries = strtol(arg, &end, 10);
+
+  if (!end || (opt->tries < MIN_TRIES)) {
+    debug_log(pamh, opt, LOG_WARN, "Invalid try value: %s", arg);
+    opt->tries = MIN_TRIES;
+  }
+}
+
+static void parse_arguments(pam_handle_t *pamh, struct module_options *opt, int argc, const char **argv) {
   int entropy_and_score = 0;
 
-  for (debug = 0; argc-- > 0; ++argv) {
+  for (; argc-- > 0; ++argv) {
     char *end = NULL;
 
     if (!strcmp(*argv, "debug")){
-      debug |= DEBUG_FLAG;
-    } else if (!strncmp(*argv, "type=", 5)) {
-      pam_set_item (pamh, PAM_AUTHTOK_TYPE, *argv + 5);
-    } else if (!strncmp(*argv, "retry=", 6)) {
-      opt->tries = strtol(*argv + 6, &end, 10);
-      if (!end || (opt->tries < MIN_TRIES)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid retry value: %s", *argv + 6);
-        opt->tries = MIN_TRIES;
-      }
-      end = NULL;
+      opt->debug |= DEBUG_FLAG;
+    } else if (!strncmp(*argv, "tries=", 6)) {
+      parse_tries(pamh, opt, *argv + 6);
+    } else if (!strncmp(*argv, "retry=", 6)) { /* Keep this for backward compatibility, but its name is confusing */
+      parse_tries(pamh, opt, *argv + 6);
     } else if (!strncmp(*argv, "min_entropy=", 12)) {
       opt->min_entropy = strtod(*argv + 12, &end);
       if(!end || (opt->min_entropy < 0.0L)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid min_entropy value: %s", *argv + 12);
+        debug_log(pamh, opt, LOG_WARN, "Invalid min_entropy value: %s", *argv + 12);
         opt->min_entropy = MIN_ENTROPY;
       } else {
         entropy_and_score |= 1;
@@ -251,7 +255,7 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
     } else if (!strncmp(*argv, "min_score=", 10)) {
       opt->min_score = strtod(*argv + 10, &end);
       if(!end || (opt->min_score <= 0)) {
-        debug_log(pamh, debug, LOG_WARN, "Invalid min_score value: %s", *argv + 10);
+        debug_log(pamh, opt, LOG_WARN, "Invalid min_score value: %s", *argv + 10);
         opt->min_score = MIN_ENTROPY;
       } else {
         entropy_and_score |= 2;
@@ -263,6 +267,8 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
       opt->local_users_only = 1;
     } else if (!strncmp(*argv, "local_users_file=", 17)) {
       opt->local_users_file = *argv + 17;
+    } else if (!strncmp(*argv, "type=", 5)) {
+      pam_set_item(pamh, PAM_AUTHTOK_TYPE, *argv + 5);
     } else if (!strncmp(*argv, "authtok_type", 12)) {
       /* NOOP: for pam_get_authtok */;
     } else if (!strncmp(*argv, "use_authtok", 11)) {
@@ -278,13 +284,11 @@ static int parse_arguments(pam_handle_t *pamh, struct module_options *opt, int a
   }
 
   if (entropy_and_score == 3)
-    debug_log(pamh, debug, LOG_WARN, "min_entropy and min_score both set. min_score will be ignored.");
-
-   return debug;
+    debug_log(pamh, opt, LOG_WARN, "min_entropy and min_score both set. min_score will be ignored.");
 }
 
-static void debug_log(pam_handle_t *pamh, int flag, int level, char *fmt, ...) {
-  if (!flag) return;
+static void debug_log(pam_handle_t *pamh, struct module_options *opt, int level, char *fmt, ...) {
+  if (!opt->debug) return;
 
   va_list args;
   va_start(args, fmt);

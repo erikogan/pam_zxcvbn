@@ -1,6 +1,6 @@
 Summary: A PAM module for password entropy checking
 Name: pam_zxcvbn
-Version: 0.2
+Version: 0.3
 Release: 1%{?dist}
 License: MIT
 Source0: https://github.com/erikogan/pam_zxcvbn/archive/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
@@ -41,6 +41,8 @@ make install DESTDIR=$RPM_BUILD_ROOT LIBDIR=%{_libdir}
 %{_moduledir}/pam_zxcvbn.so
 
 %changelog
+* Sun Sep 29 2019 Erik Ogan <erik@stealthymonkeys.com> 0.2-1
+- Bump to v0.3
 * Sun Sep 29 2019 Erik Ogan <erik@stealthymonkeys.com> 0.2-1
 - Bump to v0.2
 - Implements local_users_only

@@ -30,7 +30,7 @@ password	required	pam_zxcvbn.so
 A more common usage might look something like this:
 
 ```pam
-password	required	pam_zxcvbn.so try_first_pass retry=3 authtok_type=
+password	required	pam_zxcvbn.so try_first_pass tries=3 authtok_type=
 ```
 
 ### Available Options
@@ -41,8 +41,10 @@ password	required	pam_zxcvbn.so try_first_pass retry=3 authtok_type=
     Enable debugging information to syslog. Does not log passwords, but provides helpful information about what the
     module is doing. Specifying this option first will allow debugging of following options.
   </dd>
-  <dt><code><strong>retry=</strong>&lt;N&gt;</code></dt>
+  <dt><code><strong>tries=</strong>&lt;N&gt;</code></dt>
   <dd>Prompt user at most N times before returning with error. The default is 1.</dd>
+  <dt><code><strong>retry=</strong>&lt;N&gt;</code></dt>
+  <dd>Kept for backward compatibility. An alias for <code>tries</code>.</dd>
   <dt><code><strong>min_score=</strong>&lt;N&gt;</code></dt>
   <dd>
     Minimum <a href="https://github.com/dropbox/zxcvbn">zxcvbn</a> score for the password:
