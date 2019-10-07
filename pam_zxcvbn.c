@@ -96,7 +96,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const c
     retval = pam_get_authtok_noverify(pamh, &new_token, NULL);
 
     if (retval != PAM_SUCCESS) {
-      pam_syslog(pamh, LOG_ERR, "pam_get_authtok_noverify returned error: %s", pam_strerror(pamh, retval));
+      pam_syslog(pamh, LOG_ERR, "pam_get_authtok_noverify returned an error: %s", pam_strerror(pamh, retval));
       continue;
     } else if (new_token == NULL) { /* user aborted password change */
       return PAM_AUTHTOK_ERR;
@@ -143,7 +143,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const c
 
     retval = pam_get_authtok_verify(pamh, &new_token, NULL);
     if (retval != PAM_SUCCESS) {
-      pam_syslog(pamh, LOG_ERR, "pam_get_authtok_verify returned error: %s", pam_strerror(pamh, retval));
+      pam_syslog(pamh, LOG_ERR, "pam_get_authtok_verify returned an error: %s", pam_strerror(pamh, retval));
       pam_set_item(pamh, PAM_AUTHTOK, NULL);
       continue;
     } else if (new_token == NULL) {      /* user aborted password change */
@@ -293,7 +293,7 @@ static void debug_log(pam_handle_t *pamh, struct module_options *opt, int level,
   va_list args;
   va_start(args, fmt);
 
-  pam_syslog(pamh, level, fmt, args);
+  pam_vsyslog(pamh, level, fmt, args);
 
   va_end(args);
 }
